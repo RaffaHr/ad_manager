@@ -17,3 +17,9 @@ COPY . .
 EXPOSE 2025
 
 CMD ["uvicorn", "--host", "0.0.0.0", "--port", "2025", "core.asgi:application", "--ws", "auto"]
+
+# Cria pasta de estáticos no container
+RUN mkdir -p /app/staticfiles
+
+# Roda o collectstatic sem prompt
+RUN python manage.py collectstatic --noinput

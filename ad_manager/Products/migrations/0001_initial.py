@@ -12,7 +12,7 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.CreateModel(
-            name='baseVtex',
+            name='Product',
             fields=[
                 ('sku_id', models.IntegerField(primary_key=True, serialize=False)),
                 ('product_id', models.CharField(blank=True, max_length=255, null=True)),

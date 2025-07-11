@@ -1,6 +1,6 @@
 account_VTEX_name = "fortbras"
 environment = "vtexcommercestable"
-BASE_URL = f"https://{account_VTEX_name}.{environment}.com.br/api/catalog_system/pvt/"
+BASE_URL = f"https://{account_VTEX_name}.{environment}.com.br/"
 
 # api keys
 api_key_vtex_header = "X-VTEX-API-AppKey"

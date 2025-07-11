@@ -1,72 +1,74 @@
+# docker-compose.yml
+
 services:
-  # Banco de dados Postgres
   db:
     image: postgres:${POSTGRES_IMAGE_TAG}
     ports:
-      - "${DB_PORT}:5432"
+      - "${DB_PORT_EXTERNAL}:5432"      # externo:interno
     environment:
       POSTGRES_DB: "${POSTGRES_DB}"
       POSTGRES_USER: "${POSTGRES_USER}"
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
     volumes:
       - postgres-data:/var/lib/postgresql/data
-    restart: unless-stopped
     networks:
       - app-network
 
-  # Broker RabbitMQ com UI de Management
   rabbitmq:
     image: rabbitmq:${RABBITMQ_IMAGE_TAG}
     ports:
-      - "${RABBITMQ_AMQP_PORT}:5672"    
-      - "${RABBITMQ_MGMT_PORT}:15672"
+      - "${RABBITMQ_AMQP_PORT_EXTERNAL}:5672"
+      - "${RABBITMQ_MGMT_PORT_EXTERNAL}:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 10s
+      retries: 5
     environment:
       RABBITMQ_DEFAULT_USER: "${RABBITMQ_DEFAULT_USER}"
       RABBITMQ_DEFAULT_PASS: "${RABBITMQ_DEFAULT_PASS}"
-    restart: unless-stopped
     networks:
       - app-network
 
-  # Redis como backend de resultados do Celery
   redis:
     image: redis:${REDIS_IMAGE_TAG}
     ports:
-      - "${REDIS_PORT}:6379"
-    restart: unless-stopped
+      - "${REDIS_PORT_EXTERNAL}:6379"
+    healthcheck:
+     test: ["CMD", "redis-cli", "ping"]
+     interval: 10s
+     retries: 5
     networks:
       - app-network
 
-  # Flower para monitorar filas Celery
   flower:
     build: .
     command: >
       celery -A core flower
-      --broker=amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:${RABBITMQ_AMQP_PORT}// 
-      --port=${FLOWER_PORT}
+        --broker=amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672//
+        --port=5555
     ports:
-      - "${FLOWER_PORT}:${FLOWER_PORT}"
+      - "${FLOWER_PORT_EXTERNAL}:5555"
     depends_on:
       - rabbitmq
       - redis
     environment:
       DJANGO_SETTINGS_MODULE: core.settings
-      CELERY_BROKER_URL: amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:${RABBITMQ_AMQP_PORT}//
+      CELERY_BROKER_URL: amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672//
       CELERY_RESULT_BACKEND: "${REDIS_URL}"
     networks:
       - app-network
 
-  # Aplicação Django (Uvicorn)
   ad_manager:
     build: .
     env_file:
       - .env
     command: >
       uvicorn core.asgi:application
-      --host ${UVICORN_HOST}
-      --port ${UVICORN_PORT}
-      --ws auto
+        --host ${UVICORN_HOST}
+        --port 8000
+        --ws auto
     ports:
-      - "${UVICORN_PORT}:${UVICORN_PORT}"
+      - "${UVICORN_PORT_EXTERNAL}:8000"
     depends_on:
       - db
       - rabbitmq
@@ -76,43 +78,51 @@ services:
       DATABASE_URL: "${DATABASE_URL}"
       ENV: "${ENV}"
       ALLOWED_HOSTS: "${ALLOWED_HOSTS}"
-      CELERY_BROKER_URL: amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:${RABBITMQ_AMQP_PORT}//
+      CELERY_BROKER_URL: amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672//
       CELERY_RESULT_BACKEND: "${REDIS_URL}"
-      REDIS_URL: "${REDIS_URL}"
       DJANGO_SETTINGS_MODULE: core.settings
-    restart: unless-stopped
     volumes:
       - media-data:/app/media
+      - static-data:/app/staticfiles
     networks:
       - app-network
 
-  # Worker Celery para processar as tasks
   celery_worker:
     build: .
-    command: >
-      celery -A core worker
-      --loglevel=INFO
-      --events
-      --concurrency=${CELERY_CONCURRENCY}
+    env_file:
+      - .env
+    command: celery -A core worker --loglevel=INFO --concurrency=${CELERY_CONCURRENCY} -E
     depends_on:
-      - ad_manager
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  celery_beat:
+    build: .
+    env_file:
+      - .env
+    command: celery -A core beat --loglevel=DEBUG
+    depends_on:
       - rabbitmq
       - redis
     environment:
-      DATABASE_URL: "${DATABASE_URL}"
-      ENV: "${ENV}"
-      CELERY_BROKER_URL: amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:${RABBITMQ_AMQP_PORT}//
-      CELERY_RESULT_BACKEND: "${REDIS_URL}"
-      DJANGO_SETTINGS_MODULE: core.settings
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
     restart: unless-stopped
-    volumes:
-      - media-data:/app/media
     networks:
       - app-network
 
 volumes:
   postgres-data:
   media-data:
+  static-data:
 
 networks:
   app-network:

@@ -4,6 +4,7 @@ import dj_database_url
 from pathlib import Path
 import dj_database_url
 from dotenv import load_dotenv
+from celery.schedules import crontab
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -31,17 +32,19 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
+    'whitenoise.runserver_nostatic',
     'django.contrib.staticfiles',
+    'django_celery_beat',
     'channels',
     'rest_framework',
     'corsheaders',
-    'vtex.apps.VtexConfig',
-    'anymarket.apps.AnymarketConfig',
+    'Products.apps.ProductsConfig',
     'drf_spectacular',
     
 ]
 
 MIDDLEWARE = [
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -111,9 +114,13 @@ USE_TZ = True
 # Celery Configuration Options
 LANGUAGE_CODE = 'pt-br'
 
-CELERY_BROKER_URL = 'pyamqp://guest@localhost//'
+# Puxa do .env (definidos nos services celery_worker e celery_beat)
+CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL")
+CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND")
 CELERY_TIMEZONE = 'America/Sao_Paulo'
-CELERY_RESULT_BACKEND = "redis://redis:6379/1"
+CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
+
+
 
 # (opcional) serialize formatos
 CELERY_ACCEPT_CONTENT = ['json']
@@ -129,7 +136,14 @@ CORS_ALLOW_ORIGINS = [
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = 'static/'
+# Onde o collectstatic vai colocar os arquivos empacotados
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# URL pra servir estáticos
+STATIC_URL = '/static/'
+
+# Opcional: compactar e gerar hash nos arquivos pra cache
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -200,3 +214,17 @@ LOGGING = {
         },
     },
 }
+
+# CELERY_BEAT_SCHEDULE = {
+#     # Task para capturar o skuId de todos os produtos na VTEX - roda a cada 10 minutos
+#     "get_list_sku_ids": {
+#         "task": "Products.tasks.get_list_sku_ids",
+#         "schedule": 600.0,  # em segundos
+       
+#     },
+#     # Task para capturar da VTEX o contexto dos produtos peli skuId - roda a cada 15 minutos
+#     "get_sku_context_by_sku_id": {
+#         "task": "Products.tasks.get_sku_context_by_sku_id",
+#         "schedule": 900.0,  # em segundos
+#     },
+# }

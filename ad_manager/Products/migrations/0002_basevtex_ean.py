@@ -6,12 +6,12 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('vtex', '0001_initial'),
+        ('Products', '0001_initial'),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='basevtex',
+            model_name='Product',
             name='ean',
             field=models.CharField(blank=True, max_length=255, null=True),
         ),
